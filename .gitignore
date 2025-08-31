@@ -1,0 +1,20 @@
+# Credentials
+.env
+*.env
+config.json
+credentials.json
+*.key
+*.pem
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+venv/
+
+# Jupyter
+.ipynb_checkpoints/
+
+# OS
+.DS_Store
+Thumbs.db

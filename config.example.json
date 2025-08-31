@@ -1,0 +1,15 @@
+{
+  "spotify": {
+    "client_id": "YOUR_SPOTIFY_CLIENT_ID",
+    "client_secret": "YOUR_SPOTIFY_CLIENT_SECRET"
+  },
+  "aws": {
+    "region": "us-east-1",
+    "s3_bucket": "your-bucket-name"
+  },
+  "snowflake": {
+    "account": "your-snowflake-account",
+    "warehouse": "your-warehouse",
+    "database": "your-database"
+  }
+}
