@@ -1,0 +1,130 @@
+-- Create database and use it
+CREATE OR REPLACE DATABASE spotify_etl_project;
+USE DATABASE spotify_etl_project;
+
+DROP INTEGRATION IF EXISTS spotify_s3_int;
+
+CREATE OR REPLACE STORAGE INTEGRATION spotify_s3_int
+    TYPE = EXTERNAL_STAGE
+    STORAGE_PROVIDER = 'S3'
+    ENABLED = TRUE
+    STORAGE_AWS_ROLE_ARN = 'arn:aws:iam::096320116821:role/sfsetl'
+    STORAGE_ALLOWED_LOCATIONS = ('s3://spotify-etl-pipeline-30082059/transformed_data/')
+    COMMENT = 'Creating connection to S3 for Spotify ETL';
+
+DESC INTEGRATION spotify_s3_int;
+
+-- Create file format for CSV
+CREATE OR REPLACE FILE FORMAT csv_file_format
+    TYPE = 'CSV'
+    FIELD_DELIMITER = ','
+    SKIP_HEADER = 1
+    FIELD_OPTIONALLY_ENCLOSED_BY = '"'
+    NULL_IF = ('', 'NULL', 'null')
+    EMPTY_FIELD_AS_NULL = TRUE;
+
+-- Create tables with proper data types matching your Lambda output
+CREATE OR REPLACE TABLE tblAlbum(
+    album_id VARCHAR(255),
+    album_name VARCHAR(500),
+    release_date DATE,
+    total_tracks INTEGER,
+    url VARCHAR(500)
+);
+
+CREATE OR REPLACE TABLE tblArtist(
+    artist_id VARCHAR(255),
+    artist_name VARCHAR(500),
+    external_url VARCHAR(500)
+);
+
+CREATE OR REPLACE TABLE tblSongs(
+    song_id VARCHAR(255),
+    song_name VARCHAR(500),
+    duration_ms INTEGER,
+    url VARCHAR(500),
+    popularity INTEGER,
+    song_added TIMESTAMP,
+    album_id VARCHAR(255),
+    artist_id VARCHAR(255)
+);
+
+-- Create external stage
+CREATE OR REPLACE STAGE spotify_s3_int_stage
+    URL = 's3://spotify-etl-pipeline-30082059/transformed_data/'
+    STORAGE_INTEGRATION = spotify_s3_int
+    FILE_FORMAT = csv_file_format;
+
+-- Check stage configuration
+DESC STAGE spotify_s3_int_stage;
+
+-- List files in stage (optional - for verification)
+LIST @spotify_s3_int_stage;
+
+-- Load data into tables
+COPY INTO tblAlbum 
+FROM @spotify_s3_int_stage/album_data/
+FILE_FORMAT = csv_file_format
+ON_ERROR = 'CONTINUE';
+
+-- Verify album data
+SELECT * FROM tblAlbum LIMIT 10;
+
+COPY INTO tblArtist 
+FROM @spotify_s3_int_stage/artist_data/
+FILE_FORMAT = csv_file_format
+ON_ERROR = 'CONTINUE';
+
+-- Verify artist data  
+SELECT * FROM tblArtist LIMIT 10;
+
+COPY INTO tblSongs 
+FROM @spotify_s3_int_stage/songs_data/
+FILE_FORMAT = csv_file_format
+ON_ERROR = 'CONTINUE';
+
+-- Verify songs data
+SELECT * FROM tblSongs LIMIT 10;
+
+-- Create schema for pipes
+CREATE OR REPLACE SCHEMA pipes;
+
+-- Create auto-ingest pipes for continuous loading
+CREATE OR REPLACE PIPE pipes.album_pipe
+    AUTO_INGEST = TRUE
+    AS
+    COPY INTO spotify_etl_project.public.tblAlbum
+    FROM @spotify_etl_project.public.spotify_s3_int_stage/album_data/
+    FILE_FORMAT = csv_file_format
+    ON_ERROR = 'CONTINUE';
+
+CREATE OR REPLACE PIPE pipes.artist_pipe
+    AUTO_INGEST = TRUE
+    AS
+    COPY INTO spotify_etl_project.public.tblArtist
+    FROM @spotify_etl_project.public.spotify_s3_int_stage/artist_data/
+    FILE_FORMAT = csv_file_format
+    ON_ERROR = 'CONTINUE';
+
+CREATE OR REPLACE PIPE pipes.songs_pipe
+    AUTO_INGEST = TRUE
+    AS
+    COPY INTO spotify_etl_project.public.tblSongs
+    FROM @spotify_etl_project.public.spotify_s3_int_stage/songs_data/
+    FILE_FORMAT = csv_file_format
+    ON_ERROR = 'CONTINUE';
+
+-- Check pipe configurations
+DESC PIPE pipes.album_pipe;
+DESC PIPE pipes.artist_pipe;
+DESC PIPE pipes.songs_pipe;
+
+-- Final verification queries
+SELECT COUNT(*) as album_count FROM tblAlbum;
+SELECT COUNT(*) as artist_count FROM tblArtist;  
+SELECT COUNT(*) as song_count FROM tblSongs;
+
+-- Sample data queries
+SELECT album_name, release_date, total_tracks FROM tblAlbum ORDER BY release_date DESC LIMIT 5;
+SELECT artist_name FROM tblArtist LIMIT 5;
+SELECT song_name, popularity FROM tblSongs ORDER BY popularity DESC LIMIT 10;
